@@ -39,7 +39,7 @@ IMG_HEIGHT = 64
 STATE_DIM = 5
 
 
-def build_tfrecord_input(training=True):
+def build_tfrecord_input(training, shuffle=True, num_epochs=None):
   """Create input tfrecord tensors.
 
   Args:
@@ -59,7 +59,8 @@ def build_tfrecord_input(training=True):
     filenames = filenames[:index]
   else:
     filenames = filenames[index:]
-  filename_queue = tf.train.string_input_producer(filenames, shuffle=True)
+  filename_queue = tf.train.string_input_producer(filenames,
+    num_epochs=num_epochs, shuffle=shuffle)
   reader = tf.TFRecordReader()
   _, serialized_example = reader.read(filename_queue)
 
@@ -116,4 +117,3 @@ def build_tfrecord_input(training=True):
         capacity=100 * FLAGS.batch_size)
     zeros_batch = tf.zeros([FLAGS.batch_size, FLAGS.sequence_length, STATE_DIM])
     return image_batch, zeros_batch, zeros_batch
-
