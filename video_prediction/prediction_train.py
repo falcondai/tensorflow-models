@@ -22,7 +22,8 @@ from tensorflow.python.platform import app
 from tensorflow.python.platform import flags
 
 from prediction_input import build_tfrecord_input
-from prediction_model import construct_model
+# from prediction_model import construct_model
+from prediction_model_extra import construct_model
 
 # How often to record tensorboard summaries.
 SUMMARY_INTERVAL = 40
@@ -121,7 +122,7 @@ class Model(object):
     images = [tf.squeeze(img) for img in images]
 
     if reuse_scope is None:
-      gen_images, gen_states = construct_model(
+      gen_images, gen_states, gen_masks, gen_kernels, gen_tf_layers = construct_model(
           images,
           actions,
           states,
@@ -135,7 +136,7 @@ class Model(object):
           context_frames=FLAGS.context_frames)
     else:  # If it's a validation or test model.
       with tf.variable_scope(reuse_scope, reuse=True):
-        gen_images, gen_states = construct_model(
+        gen_images, gen_states, gen_masks, gen_kernels, gen_tf_layers = construct_model(
             images,
             actions,
             states,
@@ -180,6 +181,11 @@ class Model(object):
     self.train_op = tf.train.AdamOptimizer(self.lr).minimize(loss)
     self.summ_op = tf.merge_summary(summaries)
 
+    self.masks = gen_masks
+    self.kernels = gen_kernels
+    self.tf_layers = gen_tf_layers
+    self.gen_images = gen_images
+    self.gt_images = images
 
 def main(unused_argv):
 

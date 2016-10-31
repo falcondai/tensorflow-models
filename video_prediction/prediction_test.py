@@ -30,10 +30,12 @@ def main(unused_argv):
     print 'Constructing models and inputs.'
 
     FLAGS.train_val_split = 0.
+    # turn off scheduled sampling
+    FLAGS.schedsamp_k = -1
+
     with tf.variable_scope('model', reuse=None):
         val_images, val_actions, val_states = build_tfrecord_input(training=False, shuffle=False, num_epochs=1)
-        val_model = Model(val_images, val_actions, val_states,
-                          FLAGS.sequence_length)
+        val_model = Model(val_images, val_actions, val_states, FLAGS.sequence_length)
 
     print 'Constructing saver.'
     # Make saver.
@@ -50,6 +52,7 @@ def main(unused_argv):
 
         itr = 0
         acc_cost = 0.
+        saved = False
         try:
             while not coord.should_stop():
                 # Run through validation set.
@@ -58,7 +61,20 @@ def main(unused_argv):
                     val_model.prefix: 'val',
                     val_model.iter_num: np.float32(itr),
                 }
-                cost, val_summary_str = sess.run([val_model.loss, val_model.summ_op], feed_dict)
+                masks, kernels, tf_layers, gen_images, gt_images, cost, val_summary_str = sess.run([val_model.masks, val_model.kernels, val_model.tf_layers, val_model.gen_images, val_model.gt_images, val_model.loss, val_model.summ_op], feed_dict)
+                if not saved:
+                    print np.shape(masks)
+                    print np.shape(kernels)
+                    print np.shape(tf_layers)
+                    print np.shape(gen_images)
+                    print np.shape(gt_images)
+                    np.save('masks', masks)
+                    np.save('kernels', kernels)
+                    np.save('tf_layers', tf_layers)
+                    np.save('gen_images', gen_images)
+                    np.save('gt_images', gt_images)
+                    saved = True
+
                 acc_cost += cost * FLAGS.batch_size
                 # Print info: iteration #, cost.
                 print itr, cost
