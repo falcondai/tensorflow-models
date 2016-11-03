@@ -61,18 +61,29 @@ def main(unused_argv):
                     val_model.prefix: 'val',
                     val_model.iter_num: np.float32(itr),
                 }
-                masks, kernels, tf_layers, gen_images, gt_images, cost, val_summary_str = sess.run([val_model.masks, val_model.kernels, val_model.tf_layers, val_model.gen_images, val_model.gt_images, val_model.loss, val_model.summ_op], feed_dict)
+                masks, kernels, raw_kernels, tf_layers, gen_images, gt_images, cost, val_summary_str = sess.run([
+                    val_model.masks,
+                    val_model.kernels,
+                    val_model.gen_raw_kernels,
+                    val_model.tf_layers,
+                    val_model.gen_images,
+                    val_model.gt_images,
+                    val_model.loss,
+                    val_model.summ_op,
+                    ], feed_dict)
+                print len(raw_kernels), len(raw_kernels[5]), raw_kernels[5][0].shape
+                print np.ptp(raw_kernels[5][0][:, :, 0, 3])
                 if not saved:
                     print np.shape(masks)
                     print np.shape(kernels)
                     print np.shape(tf_layers)
                     print np.shape(gen_images)
                     print np.shape(gt_images)
-                    np.save('masks', masks)
-                    np.save('kernels', kernels)
-                    np.save('tf_layers', tf_layers)
-                    np.save('gen_images', gen_images)
-                    np.save('gt_images', gt_images)
+                    np.save('l1-model/masks', masks)
+                    np.save('l1-model/kernels', kernels)
+                    np.save('l1-model/tf_layers', tf_layers)
+                    np.save('l1-model/gen_images', gen_images)
+                    np.save('l1-model/gt_images', gt_images)
                     saved = True
 
                 acc_cost += cost * FLAGS.batch_size

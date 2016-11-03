@@ -25,6 +25,8 @@ from prediction_input import build_tfrecord_input
 # from prediction_model import construct_model
 from prediction_model_extra import construct_model
 
+import time
+
 # How often to record tensorboard summaries.
 SUMMARY_INTERVAL = 40
 
@@ -40,12 +42,14 @@ DATA_DIR = 'push/push_train'
 # local output directory
 OUT_DIR = '/tmp/data'
 
+LOG_DIR = 'tf-log/%i' % time.time()
+
 FLAGS = flags.FLAGS
 
 flags.DEFINE_string('data_dir', DATA_DIR, 'directory containing data.')
 flags.DEFINE_string('output_dir', OUT_DIR, 'directory for model checkpoints.')
-flags.DEFINE_string('event_log_dir', OUT_DIR, 'directory for writing summary.')
-flags.DEFINE_integer('num_iterations', 100000, 'number of training iterations.')
+flags.DEFINE_string('event_log_dir', LOG_DIR, 'directory for writing summary.')
+flags.DEFINE_integer('num_iterations', 10000, 'number of training iterations.')
 flags.DEFINE_string('pretrained_model', '',
                     'filepath of a pretrained model to initialize from.')
 
@@ -70,6 +74,9 @@ flags.DEFINE_float('train_val_split', 0.95,
 flags.DEFINE_integer('batch_size', 32, 'batch size for training')
 flags.DEFINE_float('learning_rate', 0.001,
                    'the base learning rate of the generator')
+
+flags.DEFINE_float('l1_coefficient', 0.01,
+                   'coefficient for the l1 regularization over motion kernels')
 
 
 ## Helper functions
@@ -122,7 +129,7 @@ class Model(object):
     images = [tf.squeeze(img) for img in images]
 
     if reuse_scope is None:
-      gen_images, gen_states, gen_masks, gen_kernels, gen_tf_layers = construct_model(
+      gen_images, gen_states, gen_masks, gen_kernels, gen_raw_kernels, gen_tf_layers = construct_model(
           images,
           actions,
           states,
@@ -136,12 +143,12 @@ class Model(object):
           context_frames=FLAGS.context_frames)
     else:  # If it's a validation or test model.
       with tf.variable_scope(reuse_scope, reuse=True):
-        gen_images, gen_states, gen_masks, gen_kernels, gen_tf_layers = construct_model(
+        gen_images, gen_states, gen_masks, gen_kernels, gen_raw_kernels, gen_tf_layers = construct_model(
             images,
             actions,
             states,
             iter_num=self.iter_num,
-            k=FLAGS.schedsamp_k,
+            k=-1,
             use_state=FLAGS.use_state,
             num_masks=FLAGS.num_masks,
             cdna=FLAGS.model == 'CDNA',
@@ -151,34 +158,43 @@ class Model(object):
 
     # L2 loss, PSNR for eval.
     loss, psnr_all = 0.0, 0.0
-    for i, x, gx in zip(
+    regularizer = 0.0
+    for i, x, gx, gk in zip(
         range(len(gen_images)), images[FLAGS.context_frames:],
-        gen_images[FLAGS.context_frames - 1:]):
+        gen_images[FLAGS.context_frames - 1:],
+        gen_raw_kernels[FLAGS.context_frames - 1:],
+        ):
       recon_cost = mean_squared_error(x, gx)
       psnr_i = peak_signal_to_noise_ratio(x, gx)
       psnr_all += psnr_i
-      summaries.append(
-          tf.scalar_summary(prefix + '_recon_cost' + str(i), recon_cost))
-      summaries.append(tf.scalar_summary(prefix + '_psnr' + str(i), psnr_i))
+    #   summaries.append(
+    #       tf.scalar_summary(prefix + '/recon_cost/' + str(i), recon_cost))
+    #   summaries.append(tf.scalar_summary(prefix + '/psnr/' + str(i), psnr_i))
       loss += recon_cost
+
+      regularizer += tf.reduce_mean(tf.abs(gk))
 
     for i, state, gen_state in zip(
         range(len(gen_states)), states[FLAGS.context_frames:],
         gen_states[FLAGS.context_frames - 1:]):
       state_cost = mean_squared_error(state, gen_state) * 1e-4
-      summaries.append(
-          tf.scalar_summary(prefix + '_state_cost' + str(i), state_cost))
+    #   summaries.append(
+    #       tf.scalar_summary(prefix + '/state_cost/' + str(i), state_cost))
       loss += state_cost
-    summaries.append(tf.scalar_summary(prefix + '_psnr_all', psnr_all))
+    # summaries.append(tf.scalar_summary(prefix + '/psnr_all', psnr_all))
     self.psnr_all = psnr_all
 
     self.loss = loss = loss / np.float32(len(images) - FLAGS.context_frames)
+    self.regularizer = regularizer / np.float32(len(images) - FLAGS.context_frames)
+    self.total_loss = loss + FLAGS.l1_coefficient * regularizer
 
-    summaries.append(tf.scalar_summary(prefix + '_loss', loss))
+    summaries.append(tf.scalar_summary(prefix + '/cost', loss))
+    summaries.append(tf.scalar_summary(prefix + '/l1_reg', self.regularizer))
+    summaries.append(tf.scalar_summary(prefix + '/loss', self.total_loss))
 
     self.lr = tf.placeholder_with_default(FLAGS.learning_rate, ())
 
-    self.train_op = tf.train.AdamOptimizer(self.lr).minimize(loss)
+    self.train_op = tf.train.AdamOptimizer(self.lr).minimize(self.total_loss)
     self.summ_op = tf.merge_summary(summaries)
 
     self.masks = gen_masks
@@ -186,6 +202,7 @@ class Model(object):
     self.tf_layers = gen_tf_layers
     self.gen_images = gen_images
     self.gt_images = images
+    self.gen_raw_kernels = gen_raw_kernels
 
 def main(unused_argv):
 

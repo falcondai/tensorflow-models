@@ -70,7 +70,7 @@ def construct_model(images,
     lstm_func = basic_conv_lstm_cell
 
     # Generated robot states and images.
-    gen_states, gen_images = [], []
+    gen_states, gen_images, gen_raw_kernels = [], [], []
     gen_masks, gen_kernels, gen_tf_layers = [], [], []
     current_state = states[0]
 
@@ -196,7 +196,7 @@ def construct_model(images,
                 transformed += stp_transformation(prev_image, stp_input1, num_masks)
             elif cdna:
                 cdna_input = tf.reshape(hidden5, [int(batch_size), -1])
-                tf_layer, kernels = cdna_transformation(prev_image, cdna_input, num_masks, int(color_channels))
+                tf_layer, kernels, raw_kerns = cdna_transformation(prev_image, cdna_input, num_masks, int(color_channels))
                 transformed += tf_layer
             elif dna:
                 # Only one mask is supported (more should be unnecessary).
@@ -215,6 +215,7 @@ def construct_model(images,
             output = mask_list[0] * prev_image
             gen_tf_layers.append(mask_list[0] * prev_image)
             gen_masks.append(mask_list[0])
+            gen_raw_kernels.append(raw_kerns)
 
             for layer, mask in zip(transformed, mask_list[1:]):
                 output += layer * mask
@@ -230,7 +231,7 @@ def construct_model(images,
                     activation_fn=None)
             gen_states.append(current_state)
 
-    return gen_images, gen_states, gen_masks, gen_kernels, gen_tf_layers
+    return gen_images, gen_states, gen_masks, gen_kernels, gen_raw_kernels, gen_tf_layers
 
 
 ## Utility functions
@@ -283,6 +284,7 @@ def cdna_transformation(prev_image, cdna_input, num_masks, color_channels):
     cdna_kerns = tf.reshape(
             cdna_kerns, [batch_size, DNA_KERN_SIZE, DNA_KERN_SIZE, 1, num_masks])
     cdna_kerns = tf.nn.relu(cdna_kerns - RELU_SHIFT) + RELU_SHIFT
+    raw_cdna_kerns = cdna_kerns
     norm_factor = tf.reduce_sum(cdna_kerns, [1, 2, 3], keep_dims=True)
     cdna_kerns /= norm_factor
 
@@ -299,7 +301,7 @@ def cdna_transformation(prev_image, cdna_input, num_masks, color_channels):
         transformed.append(tf.nn.depthwise_conv2d(preimg, kernel, [1, 1, 1, 1], 'SAME'))
     transformed = tf.concat(0, transformed)
     transformed = tf.split(3, num_masks, transformed)
-    return transformed, cdna_kerns
+    return transformed, cdna_kerns, raw_cdna_kerns
 
 
 def dna_transformation(prev_image, dna_input):
