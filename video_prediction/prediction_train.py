@@ -16,6 +16,7 @@
 """Code for training the prediction model."""
 
 import numpy as np
+import os
 import tensorflow as tf
 
 from tensorflow.python.platform import app
@@ -75,9 +76,12 @@ flags.DEFINE_integer('batch_size', 32, 'batch size for training')
 flags.DEFINE_float('learning_rate', 0.001,
                    'the base learning rate of the generator')
 
-flags.DEFINE_float('l1_coefficient', 0.01,
-                   'coefficient for the l1 regularization over motion kernels')
-
+flags.DEFINE_float('reg_coefficient', 0.01,
+                   'coefficient for the regularization over motion kernels')
+try:
+    os.mkdir(FLAGS.output_dir)
+except:
+    print 'output dir exists'
 
 ## Helper functions
 def peak_signal_to_noise_ratio(true, pred):
@@ -162,7 +166,7 @@ class Model(object):
     for i, x, gx, gk in zip(
         range(len(gen_images)), images[FLAGS.context_frames:],
         gen_images[FLAGS.context_frames - 1:],
-        gen_raw_kernels[FLAGS.context_frames - 1:],
+        gen_kernels[FLAGS.context_frames - 1:],
         ):
       recon_cost = mean_squared_error(x, gx)
       psnr_i = peak_signal_to_noise_ratio(x, gx)
@@ -172,7 +176,8 @@ class Model(object):
     #   summaries.append(tf.scalar_summary(prefix + '/psnr/' + str(i), psnr_i))
       loss += recon_cost
 
-      regularizer += tf.reduce_mean(tf.abs(gk))
+      # entropy regularization over motion kernels
+      regularizer += -tf.reduce_mean(gk * tf.log(gk))
 
     for i, state, gen_state in zip(
         range(len(gen_states)), states[FLAGS.context_frames:],
@@ -186,10 +191,10 @@ class Model(object):
 
     self.loss = loss = loss / np.float32(len(images) - FLAGS.context_frames)
     self.regularizer = regularizer / np.float32(len(images) - FLAGS.context_frames)
-    self.total_loss = loss + FLAGS.l1_coefficient * regularizer
+    self.total_loss = loss + FLAGS.reg_coefficient * regularizer
 
     summaries.append(tf.scalar_summary(prefix + '/cost', loss))
-    summaries.append(tf.scalar_summary(prefix + '/l1_reg', self.regularizer))
+    summaries.append(tf.scalar_summary(prefix + '/reg', self.regularizer))
     summaries.append(tf.scalar_summary(prefix + '/loss', self.total_loss))
 
     self.lr = tf.placeholder_with_default(FLAGS.learning_rate, ())
@@ -262,10 +267,12 @@ def main(unused_argv):
     if (itr) % SUMMARY_INTERVAL:
       summary_writer.add_summary(summary_str, itr)
 
-  tf.logging.info('Saving model.')
+  # tf.logging.info('Saving model.')
+  print 'saving model'
   saver.save(sess, FLAGS.output_dir + '/model')
-  tf.logging.info('Training complete')
-  tf.logging.flush()
+  print 'Training complete'
+  # tf.logging.info('Training complete')
+  # tf.logging.flush()
 
 
 if __name__ == '__main__':

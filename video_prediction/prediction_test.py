@@ -71,19 +71,20 @@ def main(unused_argv):
                     val_model.loss,
                     val_model.summ_op,
                     ], feed_dict)
-                print len(raw_kernels), len(raw_kernels[5]), raw_kernels[5][0].shape
+                # print len(kernels), len(kernels[5]), kernels[5][0].shape
                 print np.ptp(raw_kernels[5][0][:, :, 0, 3])
+                print kernels[5][0][0, :, :, 0, 3]
                 if not saved:
                     print np.shape(masks)
                     print np.shape(kernels)
                     print np.shape(tf_layers)
                     print np.shape(gen_images)
                     print np.shape(gt_images)
-                    np.save('l1-model/masks', masks)
-                    np.save('l1-model/kernels', kernels)
-                    np.save('l1-model/tf_layers', tf_layers)
-                    np.save('l1-model/gen_images', gen_images)
-                    np.save('l1-model/gt_images', gt_images)
+                    np.save('ent-model/masks', masks)
+                    np.save('ent-model/kernels', kernels)
+                    np.save('ent-model/tf_layers', tf_layers)
+                    np.save('ent-model/gen_images', gen_images)
+                    np.save('ent-model/gt_images', gt_images)
                     saved = True
 
                 acc_cost += cost * FLAGS.batch_size
